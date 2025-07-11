@@ -1,7 +1,4 @@
-============
 Mini-Projet
-============
-
 ## Contexte général
 
 Objectif : Concevoir une API backend
