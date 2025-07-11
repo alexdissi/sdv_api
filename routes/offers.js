@@ -1,12 +1,21 @@
 import express from 'express';
 import Offer from '../models/Offer.js';
+import redis from '../db/redis.js';
+import zlib from 'zlib';
 
 const router = express.Router();
 
 router.get('/', async (req, res) => {
   const { from, to, limit = 10, q } = req.query;
+  const cacheKey = `offers:${from}:${to}:${q || ''}`;
 
   try {
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      const buffer = Buffer.from(cached, 'base64');
+      const json = JSON.parse(zlib.gunzipSync(buffer));
+      return res.json(json.slice(0, limit));
+    }
 
     const query = { from, to };
     if (q) {
@@ -14,6 +23,10 @@ router.get('/', async (req, res) => {
     }
 
     const offers = await Offer.find(query).sort({ price: 1 }).limit(Number(limit));
+
+    const gzipped = zlib.gzipSync(Buffer.from(JSON.stringify(offers)));
+    await redis.setEx(cacheKey, 60, gzipped.toString('base64'));
+
     res.json(offers);
   } catch (err) {
     console.error(err);
@@ -23,8 +36,15 @@ router.get('/', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   const offerId = req.params.id;
+  const cacheKey = `offers:${offerId}`;
 
   try {
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      const buffer = Buffer.from(cached, 'base64');
+      const json = JSON.parse(zlib.gunzipSync(buffer));
+      return res.json(json);
+    }
 
     const offer = await Offer.findById(offerId).lean();
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
@@ -51,6 +71,10 @@ router.get('/:id', async (req, res) => {
     }
 
     offer.relatedOffers = relatedIds;
+
+    const gzipped = zlib.gzipSync(Buffer.from(JSON.stringify(offer)));
+    await redis.setEx(cacheKey, 300, gzipped.toString('base64'));
+
     res.json(offer);
   } catch (err) {
     console.error(err);

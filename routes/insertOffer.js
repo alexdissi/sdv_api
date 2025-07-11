@@ -1,5 +1,6 @@
 import express from 'express';
 
+import redis from '../db/redis.js';
 import Offer from '../models/Offer.js';
 
 
@@ -9,6 +10,12 @@ router.post('/', async (req, res) => {
   try {
     const offer = new Offer(req.body);
     await offer.save();
+
+    await redis.publish('offers:new', JSON.stringify({
+      offerId: offer._id.toString(),
+      from: offer.from,
+      to: offer.to
+    }));
 
     res.status(201).json(offer);
   } catch (err) {
