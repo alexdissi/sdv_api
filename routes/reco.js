@@ -1,28 +1,40 @@
 import express from "express";
 import driver from "../db/neo4j.js";
-import neo4j from "neo4j-driver";
 
 const router = express.Router();
 
 router.get("/", async (req, res) => {
   const { city } = req.query;
-  const k = neo4j.int(req.query.k || 3);
+  const k = parseInt(req.query.k || "3", 10);
+
+  if (!city || isNaN(k) || k < 1) {
+    return res
+      .status(400)
+      .json({ error: "Missing or invalid parameters: city or k" });
+  }
+
   const session = driver.session();
 
   try {
     const result = await session.run(
-      `MATCH (c:City {code: $city})-[:NEAR]->(n:City)
-       RETURN n.code AS city
-       ORDER BY n.weight DESC
-       LIMIT $k`,
-      { city, k }
+      `
+      MATCH (c:City {code: $city})-[r:NEAR]->(n:City)
+      RETURN n.code AS city, r.weight AS score
+      ORDER BY r.weight DESC
+      LIMIT ${k}
+      `,
+      { city }
     );
 
-    const cities = result.records.map((record) => record.get("city"));
-    res.json(cities);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Neo4j error" });
+    const recommendations = result.records.map((record) => ({
+      city: record.get("city"),
+      score: record.get("score"),
+    }));
+
+    res.json(recommendations);
+  } catch (error) {
+    console.error("❌ Neo4j query error:", error);
+    res.status(500).json({ error: "Internal server error (Neo4j)" });
   } finally {
     await session.close();
   }
