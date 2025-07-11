@@ -2,6 +2,7 @@ import express from 'express';
 import Offer from '../models/Offer.js';
 import redis from '../db/redis.js';
 import zlib from 'zlib';
+import driver from '../db/neo4j.js';
 
 const router = express.Router();
 
